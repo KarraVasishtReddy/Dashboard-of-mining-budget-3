@@ -1,7 +1,3 @@
-
-
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1134,6 +1130,32 @@ function v(x){return id(x)?.value||'';}
 function set(x,val){if(id(x))id(x).value=val;}
 function todayStr(){return new Date().toISOString().split('T')[0];}
 function fmtDate(d){const dt=new Date(d+'T00:00:00');return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});}
+
+// ── downloadBlob: reliable browser file save ───────────────────────────────
+// Used by every export in the app. Handles object-URL lifecycle correctly:
+//   • Appends the anchor to <body> so Firefox honours .click()
+//   • Defers revokeObjectURL so the download isn't aborted mid-flight
+//   • Returns false if the browser blocks the download
+function downloadBlob(data, filename, mime){
+  try{
+    const blob = (data instanceof Blob) ? data : new Blob([data], {type: mime || 'application/octet-stream'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    a.rel      = 'noopener';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    // Defer cleanup so the download stream isn't cut off
+    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
+    return true;
+  }catch(err){
+    console.error('downloadBlob error:', err);
+    if(typeof toast === 'function') toast('❌ Download failed: '+err.message, 'error');
+    return false;
+  }
+}
 function fmtDay(d){return new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'});}
 function fmt(n,dec=0){if(n===null||n===undefined||isNaN(n))return'—';return(+n).toLocaleString('en-IN',{minimumFractionDigits:dec,maximumFractionDigits:dec});}
 function pc(v){return v>=90?'#10b981':v>=75?'#f59e0b':'#ef4444';}
@@ -1731,7 +1753,7 @@ function exportCSV(){
     csv+=`${d},${fmtDay(d)},${ob},${coal},${disp},${reh},${r?.hsd_total||0},${r?.rainfall||0},${hind.toFixed(1)},${bd}\n`;
   });
   const blob=new Blob([csv],{type:'text/csv'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`TJBNSCM_${ym}.csv`;a.click();
+  downloadBlob(blob,`TJBNSCM_${ym}.csv`);
   toast('✅ CSV exported','success');
 }
 function exportAllExcel(){
@@ -1753,8 +1775,7 @@ function exportAllExcel(){
 }
 function exportJSON(){
   const data=JSON.stringify(DB,null,2);
-  const blob=new Blob([data],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`TJBNSCM_backup_${todayStr()}.json`;a.click();
+  downloadBlob(data,`TJBNSCM_backup_${todayStr()}.json`,'application/json');
   toast('✅ JSON backup exported','success');
 }
 function importJSON(){
@@ -3307,13 +3328,7 @@ Full formatted report is in the HTML attachment.`
   );
 
   // Save HTML for download
-  const blob = new Blob([html], {type: 'text/html'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `MIS_Report_TJBNSCM_${curDate}.html`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(html, `MIS_Report_TJBNSCM_${curDate}.html`, 'text/html;charset=utf-8');
 
   // Open mailto
   const ccPart = cc ? `&cc=${encodeURIComponent(cc)}` : '';
@@ -3758,12 +3773,7 @@ function advBuildEmailPreview(d) {
 function advDownloadReport() {
   const d = todayStr();
   const html = advGenerateReport(d);
-  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `Advanced_Report_TJBNSCM_${d.replace(/-/g,'')}.html`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadBlob(html, `Advanced_Report_TJBNSCM_${d.replace(/-/g,'')}.html`, 'text/html;charset=utf-8');
   toast('⬇ Advanced report downloaded', 'info');
 }
 
