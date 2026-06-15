@@ -1,7 +1,3 @@
-
-
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -424,6 +420,9 @@ tr:hover td{background:rgba(255,255,255,.013)}
     <div class="ptab" data-tab="admin" onclick="goTab('admin',this)" style="display:none">⚙ Admin</div>
   </nav>
 
+  <!-- Hidden file inputs — kept at top level so .click() works from any tab -->
+  <input type="file" id="importFile" accept=".json" style="display:none" onchange="doImportJSON(event)">
+
   <div class="main">
 
     <!-- ═══════════ DAILY ENTRY TAB ═══════════ -->
@@ -752,14 +751,9 @@ tr:hover td{background:rgba(255,255,255,.013)}
             <button class="btn btn-ghost" onclick="exportJSON()">💾 JSON Backup</button>
             <button class="btn btn-ghost" onclick="importJSON()">📥 Restore Backup</button>
           </div>
-          <input type="file" id="importFile" accept=".json" style="display:none" onchange="doImportJSON(event)">
         </div></div>
       </div>
-
-      <!-- ═══ IMPORT EXCEL CARD ═══ -->
       <div class="card" style="margin-bottom:20px">
-        <div class="ch" style="display:flex;align-items:center;justify-content:space-between">
-          <span class="ct">📥 Import from Excel</span>
           <span style="font-size:10px;color:var(--t3);font-family:var(--fm);letter-spacing:1px">XLSX / XLS</span>
         </div>
         <div class="cb">
@@ -1658,7 +1652,10 @@ function exportJSON(){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`TJBNSCM_backup_${todayStr()}.json`;a.click();
   toast('✅ JSON backup exported','success');
 }
-function importJSON(){id('importFile').click();}
+function importJSON(){
+  const inp = document.getElementById('importFile');
+  if(inp){ inp.value = ''; inp.click(); }
+}
 function doImportJSON(e){
   const file=e.target.files[0];if(!file)return;
   const reader=new FileReader();
