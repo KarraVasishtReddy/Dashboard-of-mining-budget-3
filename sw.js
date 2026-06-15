@@ -1,190 +1,120 @@
-// TJBNSCM Mining Operations — Service Worker v2
-// Required for Windows Store app launch, offline support, and PWABuilder score
+// ════════════════════════════════════════════════════════════════
+//  TJBNSCM Mining Operations — Service Worker
+//  Strategy:
+//    • App shell (index.html, manifest, icons, CDN libs): cache-first
+//    • database.json: network-first (so seed updates propagate)
+//    • Bump CACHE_VERSION on every release to invalidate old caches
+// ════════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'tjbnscm-v2';
-const APP_URL = 'https://karravasishtreddy.github.io/Dashboard-of-mining-budget-2/';
+const CACHE_VERSION = 'tjbnscm-v3-2026-06-15';
+const SCOPE         = '/Dashboard-of-mining-budget-3/';
 
-// Core files to cache on install — app must launch offline from Windows Store
-const CORE_ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icons/icon-192x192.png',
-  './icons/icon-512x512.png',
+// Files that make up the app shell — fetched once and served offline
+const SHELL_ASSETS = [
+  SCOPE,
+  SCOPE + 'index.html',
+  SCOPE + 'manifest.json',
+  SCOPE + 'icons/icon-48x48.png',
+  SCOPE + 'icons/icon-72x72.png',
+  SCOPE + 'icons/icon-96x96.png',
+  SCOPE + 'icons/icon-144x144.png',
+  SCOPE + 'icons/icon-180x180.png',
+  SCOPE + 'icons/icon-192x192.png',
+  SCOPE + 'icons/icon-512x512.png',
+  // CDN libraries used by the app (cached opaquely)
+  'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
 ];
 
-// CDN assets cached on first use (Chart.js, SheetJS, Google Fonts)
-const CDN_CACHE = 'tjbnscm-cdn-v2';
-
-// ── INSTALL: cache core assets immediately ──────────────────
+// ── INSTALL ────────────────────────────────────────────────────────
+// Pre-cache the app shell. Failing assets are tolerated so install
+// still completes even if a single CDN URL hiccups.
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        // Cache each file individually so one failure doesn't block others
-        return Promise.allSettled(
-          CORE_ASSETS.map(url =>
-            cache.add(url).catch(err =>
-              console.warn('[SW] Failed to cache:', url, err)
-            )
-          )
-        );
-      })
-      .then(() => {
-        console.log('[SW] Core assets cached, forcing activation');
-        return self.skipWaiting();
-      })
+    caches.open(CACHE_VERSION).then(cache =>
+      Promise.allSettled(
+        SHELL_ASSETS.map(url =>
+          cache.add(new Request(url, { cache: 'reload' }))
+            .catch(err => console.warn('[SW] Pre-cache skipped:', url, err.message))
+        )
+      )
+    ).then(() => self.skipWaiting())
   );
 });
 
-// ── ACTIVATE: clean old caches, claim clients ───────────────
+// ── ACTIVATE ───────────────────────────────────────────────────────
+// Delete old caches, then take control of every open client.
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(
-        keys
-          .filter(key => key !== CACHE_NAME && key !== CDN_CACHE)
-          .map(key => {
-            console.log('[SW] Deleting old cache:', key);
-            return caches.delete(key);
-          })
-      ))
-      .then(() => {
-        console.log('[SW] Activated, claiming clients');
-        return self.clients.claim();
-      })
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 
-// ── FETCH: serve from cache first, fall back to network ─────
+// ── FETCH ──────────────────────────────────────────────────────────
 self.addEventListener('fetch', event => {
-  // Only handle GET requests
-  if (event.request.method !== 'GET') return;
+  const req = event.request;
 
-  const url = new URL(event.request.url);
+  // Only handle GET; everything else bypasses the cache layer
+  if(req.method !== 'GET') return;
 
-  // Strategy 1: App pages → Cache First, network fallback
-  if (url.origin === self.location.origin ||
-      url.hostname === 'karravasishtreddy.github.io') {
+  const url = new URL(req.url);
+
+  // ── 1. database.json — network-first ─────────────────────────────
+  //    Seed data may change between releases; prefer fresh, fall back
+  //    to cache when offline.
+  if(url.pathname.endsWith('/database.json')) {
     event.respondWith(
-      caches.match(event.request)
-        .then(cached => {
-          if (cached) {
-            // Serve cached, update in background
-            const networkUpdate = fetch(event.request)
-              .then(response => {
-                if (response && response.status === 200) {
-                  caches.open(CACHE_NAME)
-                    .then(cache => cache.put(event.request, response.clone()));
-                }
-                return response;
-              })
-              .catch(() => {});
-            return cached;
+      fetch(req)
+        .then(res => {
+          if(res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then(c => c.put(req, copy));
           }
-          // Not in cache — fetch and store
-          return fetch(event.request)
-            .then(response => {
-              if (!response || response.status !== 200) return response;
-              const clone = response.clone();
-              caches.open(CACHE_NAME)
-                .then(cache => cache.put(event.request, clone));
-              return response;
-            })
-            .catch(() => {
-              // Offline fallback — return index.html for navigation requests
-              if (event.request.mode === 'navigate') {
-                return caches.match('./index.html');
-              }
-            });
+          return res;
         })
+        .catch(() => caches.match(req))
     );
     return;
   }
 
-  // Strategy 2: CDN assets (Chart.js, SheetJS, Fonts) → Cache First
-  const isCDN = url.hostname.includes('cdnjs.cloudflare.com') ||
-                url.hostname.includes('fonts.googleapis.com') ||
-                url.hostname.includes('fonts.gstatic.com');
-
-  if (isCDN) {
+  // ── 2. Navigation requests — network-first, fallback to index ─────
+  //    Lets fresh HTML load when online, app shell when offline.
+  if(req.mode === 'navigate') {
     event.respondWith(
-      caches.match(event.request)
-        .then(cached => {
-          if (cached) return cached;
-          return fetch(event.request)
-            .then(response => {
-              if (!response || response.status !== 200) return response;
-              const clone = response.clone();
-              caches.open(CDN_CACHE)
-                .then(cache => cache.put(event.request, clone));
-              return response;
-            })
-            .catch(() => {
-              console.warn('[SW] CDN fetch failed (offline):', url.href);
-            });
+      fetch(req)
+        .then(res => {
+          const copy = res.clone();
+          caches.open(CACHE_VERSION).then(c => c.put(req, copy));
+          return res;
         })
+        .catch(() => caches.match(req).then(r => r || caches.match(SCOPE + 'index.html')))
     );
     return;
   }
-});
 
-// ── OFFLINE FALLBACK PAGE ────────────────────────────────────
-// If everything fails and we need a page, return cached index.html
-self.addEventListener('fetch', event => {
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .catch(() => caches.match('./index.html'))
-    );
-  }
-});
-
-// ── MESSAGE: handle cache updates from app ──────────────────
-self.addEventListener('message', event => {
-  if (event.data === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-  if (event.data === 'CACHE_NOW') {
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(CORE_ASSETS))
-      .then(() => console.log('[SW] Manual cache triggered'));
-  }
-});
-
-// ── PUSH NOTIFICATIONS (future use) ─────────────────────────
-self.addEventListener('push', event => {
-  const data = event.data?.json() || {
-    title: 'TJBNSCM Mining',
-    body: 'Daily MIS report reminder',
-    icon: './icons/icon-192x192.png'
-  };
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: data.icon || './icons/icon-192x192.png',
-      badge: './icons/icon-72x72.png',
-      vibrate: [200, 100, 200],
-      tag: 'tjbnscm-notification',
-      renotify: true,
+  // ── 3. Everything else (shell + icons + CDN libs) — cache-first ───
+  event.respondWith(
+    caches.match(req).then(cached => {
+      if(cached) return cached;
+      return fetch(req).then(res => {
+        // Cache successful or opaque (CDN) responses
+        if(res && (res.ok || res.type === 'opaque')) {
+          const copy = res.clone();
+          caches.open(CACHE_VERSION).then(c => c.put(req, copy));
+        }
+        return res;
+      }).catch(() => cached);  // last-resort fallback
     })
   );
 });
 
-// ── NOTIFICATION CLICK ───────────────────────────────────────
-self.addEventListener('notificationclick', event => {
-  event.notification.close();
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then(clientList => {
-        for (const client of clientList) {
-          if (client.url.includes('Dashboard-of-mining-budget-2') && 'focus' in client) {
-            return client.focus();
-          }
-        }
-        return clients.openWindow(APP_URL);
-      })
-  );
+// ── MESSAGE ────────────────────────────────────────────────────────
+// Allow the page to trigger an immediate update via:
+//   navigator.serviceWorker.controller.postMessage({type:'SKIP_WAITING'})
+self.addEventListener('message', event => {
+  if(event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
-
-console.log('[SW] TJBNSCM Service Worker v2 loaded');
