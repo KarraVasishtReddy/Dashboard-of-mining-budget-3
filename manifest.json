@@ -3,8 +3,8 @@
   "short_name": "TJBNSCM",
   "description": "Daily operations dashboard for Takli Jena Coal Mine. Track shift production, HEMM machine performance, OPEX costs and hindrance logs. Works fully offline.",
   "id": "Miningengineer.TJBNSCMMiningOperations",
-  "start_url": "https://karravasishtreddy.github.io/Dashboard-of-mining-budget-2/",
-  "scope": "/Dashboard-of-mining-budget-2/",
+  "start_url": "https://karravasishtreddy.github.io/Dashboard-of-mining-budget-3/",
+  "scope": "/Dashboard-of-mining-budget-3/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#07090f",
@@ -75,7 +75,7 @@
       "name": "Daily Entry",
       "short_name": "Daily",
       "description": "Enter today's shift production and machine data",
-      "url": "/Dashboard-of-mining-budget-2/#daily",
+      "url": "/Dashboard-of-mining-budget-3/#daily",
       "icons": [
         {
           "src": "icons/icon-96x96.png",
@@ -88,7 +88,7 @@
       "name": "Dashboard",
       "short_name": "Dashboard",
       "description": "Live operations analytics",
-      "url": "/Dashboard-of-mining-budget-2/#dashboard",
+      "url": "/Dashboard-of-mining-budget-3/#dashboard",
       "icons": [
         {
           "src": "icons/icon-96x96.png",
@@ -101,7 +101,7 @@
       "name": "Historical Reports",
       "short_name": "History",
       "description": "HEMM, OPEX and production history",
-      "url": "/Dashboard-of-mining-budget-2/#historical",
+      "url": "/Dashboard-of-mining-budget-3/#historical",
       "icons": [
         {
           "src": "icons/icon-96x96.png",
