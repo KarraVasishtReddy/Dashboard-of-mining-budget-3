@@ -1,0 +1,9 @@
+{
+  "appId": "com.aripl.tjbnscm",
+  "appName": "TJBNSCM Mining",
+  "webDir": "www",
+  "server": {
+    "url": "https://karravasishtreddy.github.io/Dashboard-of-mining-budget-3/",
+    "cleartext": true
+  }
+}
