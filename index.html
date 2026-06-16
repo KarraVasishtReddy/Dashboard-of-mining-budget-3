@@ -140,7 +140,6 @@ select option{background:var(--s2)}
 .adm-stat-val{font-family:var(--fd);font-size:28px;font-weight:800}
 .adm-stat-lbl{font-size:10px;color:var(--t3);letter-spacing:1.5px;text-transform:uppercase;font-family:var(--fm);margin-top:2px}
 
-
 .kpi{background:var(--s1);border:1px solid var(--br);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden}
 .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--kc,var(--gold)),transparent)}
 .ki{position:absolute;right:12px;top:12px;font-size:19px;opacity:.1}
@@ -353,7 +352,10 @@ tr:hover td{background:rgba(255,255,255,.013)}
 #advEmailModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:500;align-items:center;justify-content:center}
 @media(max-width:1100px){.adv-mid-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.adv-gauges-row,.adv-mid-grid,.adv-bot-grid,.adv-extra-grid{grid-template-columns:1fr 1fr}}
-
+@keyframes instPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.5)}
+  50%{box-shadow:0 0 0 6px rgba(245,158,11,0)}
+}
 </style>
 </head>
 <body>
@@ -404,7 +406,8 @@ tr:hover td{background:rgba(255,255,255,.013)}
     </div>
     <div class="hdr-r">
       <div class="upill"><div class="uav" id="hdr-uav">K</div><span class="un" id="hdr-un">KVR</span></div>
-      <button id="installBtn" onclick="installApp()" style="display:none;align-items:center;gap:5px;padding:4px 10px;border-radius:5px;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#000;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--fm);letter-spacing:1px" title="Install App">⬇ INSTALL</button>
+      <button id="installBtn" onclick="installApp()" title="Install App on this device" style="display:none;align-items:center;gap:5px;padding:4px 12px;border-radius:5px;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#000;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--fm);letter-spacing:1px;animation:instPulse 2s ease-in-out infinite">⬇ INSTALL</button>
+      <button id="installFallbackBtn" onclick="showInstallGuide()" title="How to install this app" style="display:none;align-items:center;gap:5px;padding:4px 12px;border-radius:5px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);color:#f59e0b;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--fm);letter-spacing:1px">⬇ INSTALL</button>
       <button class="btnout" onclick="doLogout()">⏻ Out</button>
     </div>
   </header>
@@ -1130,32 +1133,6 @@ function v(x){return id(x)?.value||'';}
 function set(x,val){if(id(x))id(x).value=val;}
 function todayStr(){return new Date().toISOString().split('T')[0];}
 function fmtDate(d){const dt=new Date(d+'T00:00:00');return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});}
-
-// ── downloadBlob: reliable browser file save ───────────────────────────────
-// Used by every export in the app. Handles object-URL lifecycle correctly:
-//   • Appends the anchor to <body> so Firefox honours .click()
-//   • Defers revokeObjectURL so the download isn't aborted mid-flight
-//   • Returns false if the browser blocks the download
-function downloadBlob(data, filename, mime){
-  try{
-    const blob = (data instanceof Blob) ? data : new Blob([data], {type: mime || 'application/octet-stream'});
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = filename;
-    a.rel      = 'noopener';
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    // Defer cleanup so the download stream isn't cut off
-    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
-    return true;
-  }catch(err){
-    console.error('downloadBlob error:', err);
-    if(typeof toast === 'function') toast('❌ Download failed: '+err.message, 'error');
-    return false;
-  }
-}
 function fmtDay(d){return new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'});}
 function fmt(n,dec=0){if(n===null||n===undefined||isNaN(n))return'—';return(+n).toLocaleString('en-IN',{minimumFractionDigits:dec,maximumFractionDigits:dec});}
 function pc(v){return v>=90?'#10b981':v>=75?'#f59e0b':'#ef4444';}
@@ -1753,7 +1730,7 @@ function exportCSV(){
     csv+=`${d},${fmtDay(d)},${ob},${coal},${disp},${reh},${r?.hsd_total||0},${r?.rainfall||0},${hind.toFixed(1)},${bd}\n`;
   });
   const blob=new Blob([csv],{type:'text/csv'});
-  downloadBlob(blob,`TJBNSCM_${ym}.csv`);
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`TJBNSCM_${ym}.csv`;a.click();
   toast('✅ CSV exported','success');
 }
 function exportAllExcel(){
@@ -1775,7 +1752,8 @@ function exportAllExcel(){
 }
 function exportJSON(){
   const data=JSON.stringify(DB,null,2);
-  downloadBlob(data,`TJBNSCM_backup_${todayStr()}.json`,'application/json');
+  const blob=new Blob([data],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`TJBNSCM_backup_${todayStr()}.json`;a.click();
   toast('✅ JSON backup exported','success');
 }
 function importJSON(){
@@ -2575,7 +2553,6 @@ function hRenderTrend(d) {
 </script>
 
 <script>
-// ═══ PWA SERVICE WORKER ═══
 if('serviceWorker' in navigator) {
   // Register SW on GitHub Pages, localhost, OR when running as installed PWA/Windows app
   const host = window.location.hostname;
@@ -2603,36 +2580,8 @@ if('serviceWorker' in navigator) {
     console.log('[PWA] SW skipped — preview environment (' + host + ')');
   }
 }// ═══ INSTALL PROMPT ═══
-let deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  // Show install button after login
-  const btn = document.getElementById('installBtn');
-  if(btn) btn.style.display = 'flex';
-});
-window.addEventListener('appinstalled', () => {
-  deferredPrompt = null;
-  const btn = document.getElementById('installBtn');
-  if(btn) btn.style.display = 'none';
-  console.log('[PWA] App installed');
-});
-function installApp() {
-  if(!deferredPrompt) return;
-  deferredPrompt.prompt();
-  deferredPrompt.userChoice.then(choice => {
-    deferredPrompt = null;
-    const btn = document.getElementById('installBtn');
-    if(btn) btn.style.display = 'none';
-  });
-}
-
-
-// ═══════════════════════════════════════════════════════════
 //  MIS REPORT — EMAIL GENERATION ON SAVE
-// ═══════════════════════════════════════════════════════════
 
-// ── Extra fields saved into day record ──────────────────────
 function emptyMISFields() {
   return {
     coal_stock_mt: 0,
@@ -2660,7 +2609,6 @@ function emptyMISFields() {
   };
 }
 
-// ── Inject MIS fields section into the Daily Entry form ─────
 function injectMISFields() {
   // Find where to inject — after the notes card, before closing </div> of tab-daily
   const notesCard = document.querySelector('#tab-daily .card:last-child');
@@ -2738,7 +2686,6 @@ function injectMISFields() {
   notesCard.insertAdjacentHTML('afterend', misHtml);
 }
 
-// ── Load/Save MIS fields ─────────────────────────────────────
 function loadMISFields(date) {
   const rec = getDay(date);
   const mis = rec?.mis || emptyMISFields();
@@ -2761,7 +2708,6 @@ function saveMISFields() {
   });
 }
 
-// ── Compute FTM/FTY totals from DB ───────────────────────────
 function getMISAgg(date) {
   const [year, month, day] = date.split('-').map(Number);
   const ym = date.substring(0, 7);
@@ -2863,7 +2809,6 @@ function getMISAgg(date) {
   };
 }
 
-// ── Build MIS HTML (matches the exact report layout) ─────────
 function buildMISHtml(date) {
   const A = getMISAgg(date);
   const mis = A.mis;
@@ -3252,11 +3197,25 @@ function buildMISHtml(date) {
     </div>
   </div>
 </div>
+
+<!-- Install Guide Modal -->
+<div id="installGuideModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);z-index:700;align-items:center;justify-content:center">
+  <div style="background:var(--s1);border:1px solid var(--br2);border-radius:14px;padding:26px;width:480px;max-width:95vw">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-family:var(--fd);font-size:18px;font-weight:700">⬇ Install App</div>
+      <button onclick="document.getElementById('installGuideModal').style.display='none'" style="padding:3px 9px;border-radius:5px;background:var(--s2);border:1px solid var(--br2);color:var(--t2);cursor:pointer;font-size:14px">✕</button>
+    </div>
+    <div id="installGuideContent"></div>
+    <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px">
+      <button onclick="document.getElementById('installGuideModal').style.display='none'" style="padding:7px 16px;border-radius:6px;background:var(--s2);border:1px solid var(--br2);color:var(--t2);cursor:pointer;font-family:var(--fd);font-size:12px">Close</button>
+      <button id="installDirectBtn" onclick="installApp()" style="display:none;padding:7px 18px;border-radius:6px;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#000;cursor:pointer;font-family:var(--fd);font-size:13px;font-weight:700">⬇ Install Now</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>`;
 }
 
-// ── Preview in new window ────────────────────────────────────
 function previewMISEmail() {
   const html = buildMISHtml(curDate);
   const w = window.open('', '_blank');
@@ -3264,7 +3223,6 @@ function previewMISEmail() {
   w.document.close();
 }
 
-// ── Send via mailto (opens email client) ─────────────────────
 function sendMISEmail() {
   const rec = getDay(curDate);
   const mis = rec?.mis || {};
@@ -3312,7 +3270,7 @@ DIESEL (FTD):
 MANPOWER:
   AIPL            : ${(+(A.mis?.manpower_aipl_oc||0))+(+(A.mis?.manpower_aipl_surface||0))}
   Contractual     : ${(+(A.mis?.manpower_contractual_oc||0))+(+(A.mis?.manpower_contractual_surface||0))}
-  
+
 OTHER:
   Coal Stock      : ${Number(A.mis?.coal_stock_mt||0).toLocaleString('en-IN')} Mt
   Rainfall        : ${A.rec?.rainfall||0} mm
@@ -3328,7 +3286,13 @@ Full formatted report is in the HTML attachment.`
   );
 
   // Save HTML for download
-  downloadBlob(html, `MIS_Report_TJBNSCM_${curDate}.html`, 'text/html;charset=utf-8');
+  const blob = new Blob([html], {type: 'text/html'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `MIS_Report_TJBNSCM_${curDate}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
 
   // Open mailto
   const ccPart = cc ? `&cc=${encodeURIComponent(cc)}` : '';
@@ -3337,12 +3301,8 @@ Full formatted report is in the HTML attachment.`
 
   toast('📧 Email client opened + HTML report downloaded', 'success');
 }
-
-
-// ═══════════════════════════════════════════════════════════════
 //  ADVANCED DASHBOARD + MINE PRODUCTION ENTRY
 //  Added to index_.html — uses its own DB key to avoid conflicts
-// ═══════════════════════════════════════════════════════════════
 const ADV_DB_KEY = 'adv_prod_v1';
 let advDB2 = {};
 try { advDB2 = JSON.parse(localStorage.getItem(ADV_DB_KEY)) || {}; } catch(e) { advDB2 = {}; }
@@ -3358,7 +3318,6 @@ const ADV_PLAN = { ob_month:300000, rom_month:60000, proc_wc:50, proc_rc:12,
                    disp_wc:50, disp_rc:12, rakes_wc:13, rakes_rc:3,
                    ob_daily:10, ce_daily:2 };
 
-// ── Data helpers ─────────────────────────────────────────────────
 function advDbKey(date, shift) { return `${date}_${shift}`; }
 
 function advEmptyRec(date, shift) {
@@ -3420,8 +3379,6 @@ function advGetLast7(refDate) {
   return days;
 }
 
-// ── Extend goTab to handle new tabs ──────────────────────────────
-// ── Section toggle ────────────────────────────────────────────────
 function advToggleSec(bodyId, arrowId) {
   const b=id(bodyId), a=id(arrowId);
   if(!b) return;
@@ -3429,7 +3386,6 @@ function advToggleSec(bodyId, arrowId) {
   else{b.style.display='none';if(a)a.textContent='▸';}
 }
 
-// ── Render helpers ────────────────────────────────────────────────
 function advSelEl(elemId, opts, val) {
   return `<select id="${elemId}" style="width:100%;padding:5px 6px;border-radius:4px;font-size:10px;min-width:85px;background:var(--s2);border:1px solid var(--br2);color:var(--t1)">
     <option value="">Select</option>
@@ -3437,7 +3393,6 @@ function advSelEl(elemId, opts, val) {
   </select>`;
 }
 
-// ── Render OB rows ────────────────────────────────────────────────
 function advRenderOBRows() {
   const rec = advGetRec();
   const tb = id('adv-ob-tbody'); if(!tb) return;
@@ -3459,7 +3414,6 @@ function advRenderOBRows() {
   </tr>`).join('');
 }
 
-// ── Render CE rows ────────────────────────────────────────────────
 function advRenderCERows() {
   const rec = advGetRec();
   const tb = id('adv-ce-tbody'); if(!tb) return;
@@ -3482,7 +3436,6 @@ function advRenderCERows() {
   </tr>`).join('');
 }
 
-// ── Render Rain rows ──────────────────────────────────────────────
 function advRenderRainRows() {
   const rec = advGetRec();
   const tb = id('adv-rain-tbody'); if(!tb) return;
@@ -3495,7 +3448,6 @@ function advRenderRainRows() {
   </tr>`).join('');
 }
 
-// ── Add/Delete rows ───────────────────────────────────────────────
 function advAddRow(type) {
   advCollectForm();
   const rec = advGetRec();
@@ -3527,7 +3479,6 @@ function advEditStop(type, i) {
   if(type==='ob') advRenderOBRows(); else advRenderCERows();
 }
 
-// ── Collect form values ───────────────────────────────────────────
 function advCollectForm() {
   const rec = advGetRec();
   const g = (eid) => { const e=id(eid); return e?e.value:''; };
@@ -3557,7 +3508,6 @@ function advCollectForm() {
                tree:n('adv-kpi-tree'), near_miss:n('adv-kpi-near'), fatal:n('adv-kpi-fatal')};
 }
 
-// ── Load form ─────────────────────────────────────────────────────
 function advLoadForm() {
   advEntDate  = id('adv-entry-date')?.value  || todayStr();
   advEntShift = id('adv-entry-shift')?.value || 'General';
@@ -3576,7 +3526,6 @@ function advLoadForm() {
   sv('adv-kpi-near',rec.kpi.near_miss); sv('adv-kpi-fatal',rec.kpi.fatal);
 }
 
-// ── Save ──────────────────────────────────────────────────────────
 function advSave() {
   advCollectForm();
   const rec = advGetRec();
@@ -3591,7 +3540,6 @@ function advSave() {
   }, 400);
 }
 
-// ── Dashboard render ──────────────────────────────────────────────
 function advRenderDashboard() {
   const dashDate = todayStr();
   const data = advGetDayData(dashDate);
@@ -3604,7 +3552,6 @@ function advRenderDashboard() {
   advRenderCharts(days, labels, data, mtd);
 }
 
-// ── Gauges ────────────────────────────────────────────────────────
 function advRenderGauges(data, mtd) {
   const row = id('adv-gauges-row'); if(!row) return;
   const pct = (a,p) => p>0 ? Math.min((a/p*100),200) : 0;
@@ -3667,7 +3614,6 @@ function advBuildGauge(g) {
   </div>`;
 }
 
-// ── KPI Sidebar ───────────────────────────────────────────────────
 function advRenderKPI(data) {
   const el = id('adv-kpi-vals'); if(!el) return;
   const row=(lbl,val,clr)=>`<div class="adv-kpi-row"><div class="adv-kpi-label">${lbl}</div><div class="adv-kpi-val" style="color:${clr}">${val}</div></div>`;
@@ -3682,7 +3628,6 @@ function advRenderKPI(data) {
     row('Fatal',      data.fatal||0,data.fatal>0?'#ef4444':'#10b981');
 }
 
-// ── Charts ────────────────────────────────────────────────────────
 function advMkC(cid, cfg) {
   const el=id(cid); if(!el) return;
   if(advChartReg[cid]) advChartReg[cid].destroy();
@@ -3729,10 +3674,7 @@ function advRenderCharts(days, labels, todayData, mtd) {
     {label:'Planned',data:days.map(()=>81.5),borderColor:'#1e293b',borderDash:[5,3],pointRadius:3,tension:0}
   ]},options:{...ACO(),scales:{x:{grid:{color:'rgba(30,45,71,.5)'},ticks:{font:{size:8}}},y:{grid:{color:'rgba(30,45,71,.5)'},ticks:{font:{size:8}},min:75,max:95}}}});
 }
-
-// ═══════════════════════════════════════════════════════════════
 //  EMAIL — hardcoded to venkat.k@auromining.com
-// ═══════════════════════════════════════════════════════════════
 const ADV_EMAIL_TO = 'venkat.k@auromining.com';
 
 function openAdvEmailModal() {
@@ -3773,7 +3715,12 @@ function advBuildEmailPreview(d) {
 function advDownloadReport() {
   const d = todayStr();
   const html = advGenerateReport(d);
-  downloadBlob(html, `Advanced_Report_TJBNSCM_${d.replace(/-/g,'')}.html`, 'text/html;charset=utf-8');
+  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Advanced_Report_TJBNSCM_${d.replace(/-/g,'')}.html`;
+  a.click();
+  URL.revokeObjectURL(a.href);
   toast('⬇ Advanced report downloaded', 'info');
 }
 
@@ -3827,7 +3774,6 @@ Advanced · TJBNSCM Mining Operations Dashboard`;
   toast('📧 Email to venkat.k@auromining.com opened + report downloaded', 'success');
 }
 
-// ── Generate HTML report ──────────────────────────────────────────
 function advGenerateReport(d) {
   const data = advGetDayData(d);
   const mtd  = advGetMTD(d);
@@ -3892,10 +3838,7 @@ ${shiftRows?`<p class="sec">SHIFT-WISE PRODUCTION</p><table><thead><tr><th style
 <div class="footer">Advanced · TJBNSCM · AURO INFRA PRIVATE LIMITED · ${new Date().toLocaleString('en-IN')} · KVR</div>
 </body></html>`;
 }
-
-// ═══════════════════════════════════════════════════════════════
 //  ADMIN PANEL
-// ═══════════════════════════════════════════════════════════════
 
 const ROLE_COLORS = { admin:'#f59e0b', manager:'#3b82f6' };
 let _admDelTarget = null;
@@ -4046,10 +3989,8 @@ function admTogglePw(inputId) {
   const el = id(inputId); if(!el) return;
   el.type = el.type === 'password' ? 'text' : 'password';
 }
-// ═══════════════════════════════════════════════════════════════
 //  ONE-TIME DATA SEED  (Apr–Jun 2026 historical data)
 //  Runs once on first load; skips if already seeded.
-// ═══════════════════════════════════════════════════════════════
 const SEED_KEY = 'tjbnscm_seed_v1';
 const SEED_URL = 'database.json';  // sibling file containing historical data
 
@@ -4147,6 +4088,134 @@ async function runSeed() {
 
 // Kick off seed immediately — before login screen shows
 runSeed();
+
+// ── Install / PWA ───────────────────────────────────────────────
+let deferredPrompt = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  // Show native install button
+  const btn = document.getElementById('installBtn');
+  const fbk = document.getElementById('installFallbackBtn');
+  if(btn){ btn.style.display = 'flex'; }
+  if(fbk){ fbk.style.display = 'none'; }
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  ['installBtn','installFallbackBtn'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.style.display='none';
+  });
+});
+
+// Show fallback button if not already installed and no prompt
+function checkShowInstallBtn() {
+  const isStandalone = window.matchMedia('(display-mode:standalone)').matches
+                    || window.navigator.standalone === true;
+  if(isStandalone) return; // already installed — hide both buttons
+  if(!deferredPrompt) {
+    // Show the fallback guide button
+    const fbk = document.getElementById('installFallbackBtn');
+    if(fbk) fbk.style.display = 'flex';
+  }
+}
+
+function installApp() {
+  if(deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(choice => {
+      deferredPrompt = null;
+      const btn = document.getElementById('installBtn');
+      if(btn) btn.style.display = 'none';
+    });
+  } else {
+    showInstallGuide();
+  }
+}
+
+function showInstallGuide() {
+  const modal = document.getElementById('installGuideModal');
+  const content = document.getElementById('installGuideContent');
+  const directBtn = document.getElementById('installDirectBtn');
+  if(!modal||!content) return;
+
+  const ua = navigator.userAgent.toLowerCase();
+  const isAndroid = /android/.test(ua);
+  const isIOS     = /iphone|ipad|ipod/.test(ua);
+  const isChrome  = /chrome/.test(ua) && !/edge/.test(ua);
+  const isEdge    = /edge|edg/.test(ua);
+  const isSafari  = /safari/.test(ua) && !/chrome/.test(ua);
+  const isDesktop = !isAndroid && !isIOS;
+
+  if(deferredPrompt) {
+    content.innerHTML = `<div style="text-align:center;padding:10px 0">
+      <div style="font-size:40px;margin-bottom:12px">📲</div>
+      <div style="font-family:var(--fd);font-size:15px;font-weight:600;margin-bottom:6px">Ready to install!</div>
+      <div style="font-size:12px;color:var(--t2)">Click Install Now to add TJBNSCM Ops to your device.</div>
+    </div>`;
+    if(directBtn) directBtn.style.display='block';
+  } else if(isIOS && isSafari) {
+    content.innerHTML = `
+      <div style="font-size:13px;color:var(--t2);line-height:1.9">
+        <div style="font-family:var(--fd);font-size:14px;font-weight:700;color:var(--t1);margin-bottom:10px">Install on iPhone / iPad:</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--br)">
+          <span style="font-size:22px">1️⃣</span> Tap the <strong>Share</strong> button <span style="font-size:16px">⬆</span> at the bottom of Safari
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--br)">
+          <span style="font-size:22px">2️⃣</span> Scroll down and tap <strong>"Add to Home Screen"</strong>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+          <span style="font-size:22px">3️⃣</span> Tap <strong>"Add"</strong> — the app appears on your home screen
+        </div>
+      </div>`;
+  } else if(isAndroid) {
+    content.innerHTML = `
+      <div style="font-size:13px;color:var(--t2);line-height:1.9">
+        <div style="font-family:var(--fd);font-size:14px;font-weight:700;color:var(--t1);margin-bottom:10px">Install on Android (Chrome):</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--br)">
+          <span style="font-size:22px">1️⃣</span> Tap the <strong>⋮ menu</strong> (3 dots) in Chrome top-right
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--br)">
+          <span style="font-size:22px">2️⃣</span> Tap <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+          <span style="font-size:22px">3️⃣</span> Tap <strong>"Install"</strong> — app installs on your home screen
+        </div>
+      </div>`;
+  } else if(isDesktop && isEdge) {
+    content.innerHTML = `
+      <div style="font-size:13px;color:var(--t2);line-height:1.9">
+        <div style="font-family:var(--fd);font-size:14px;font-weight:700;color:var(--t1);margin-bottom:10px">Install on Windows (Edge):</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--br)">
+          <span style="font-size:22px">1️⃣</span> Click the <strong>⊕ icon</strong> in the address bar (right side)
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--br)">
+          <span style="font-size:22px">2️⃣</span> Or click <strong>⋯ menu → Apps → Install this site as an app</strong>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+          <span style="font-size:22px">3️⃣</span> Click <strong>"Install"</strong> in the dialog
+        </div>
+      </div>`;
+  } else {
+    content.innerHTML = `
+      <div style="font-size:13px;color:var(--t2);line-height:1.9">
+        <div style="font-family:var(--fd);font-size:14px;font-weight:700;color:var(--t1);margin-bottom:10px">Install on Desktop (Chrome):</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--br)">
+          <span style="font-size:22px">1️⃣</span> Click the <strong>⊕ install icon</strong> in the browser address bar
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--br)">
+          <span style="font-size:22px">2️⃣</span> Or click <strong>⋮ menu → Save and share → Install page as app</strong>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+          <span style="font-size:22px">3️⃣</span> Click <strong>"Install"</strong> — app opens in its own window
+        </div>
+      </div>`;
+  }
+
+  modal.style.display = 'flex';
+}
 
 </script>
 </body>
