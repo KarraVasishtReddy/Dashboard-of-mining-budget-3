@@ -769,14 +769,14 @@ tr:hover td{background:rgba(255,255,255,.013)}
           </div>
 
           <!-- Drop zone -->
-          <div id="xlDropZone" onclick="document.getElementById('xlFile').click()"
-            style="border:2px dashed var(--br3);border-radius:var(--r2);padding:28px 20px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:14px;background:var(--s1)"
+          <label id="xlDropZone" for="xlFile"
+            style="display:block;position:relative;border:2px dashed var(--br3);border-radius:var(--r2);padding:28px 20px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:14px;background:var(--s1)"
             ondragover="xlDragOver(event)" ondragleave="xlDragLeave(event)" ondrop="xlHandleDrop(event)">
-            <div style="font-size:28px;margin-bottom:8px">📂</div>
-            <div style="font-family:var(--fd);font-size:14px;color:var(--t2);font-weight:600">Click or Drag &amp; Drop Excel file</div>
-            <div style="font-size:10px;color:var(--t3);margin-top:4px;font-family:var(--fm)">.xlsx / .xls accepted</div>
-          </div>
-          <input type="file" id="xlFile" accept=".xlsx,.xls" style="display:none" onchange="xlFileChosen(event)">
+            <div style="font-size:28px;margin-bottom:8px;pointer-events:none">📂</div>
+            <div style="font-family:var(--fd);font-size:14px;color:var(--t2);font-weight:600;pointer-events:none">Click or Drag &amp; Drop Excel file</div>
+            <div style="font-size:10px;color:var(--t3);margin-top:4px;font-family:var(--fm);pointer-events:none">.xlsx / .xls accepted</div>
+            <input type="file" id="xlFile" accept=".xlsx,.xls" style="position:absolute;opacity:0;width:1px;height:1px" onchange="xlFileChosen(event)">
+          </label>
 
           <!-- Preview / status area -->
           <div id="xlPreview" style="display:none">
@@ -974,6 +974,7 @@ function doLogin(){
     id('scr-app').classList.add('on');
     applyRoleUI();
     initApp();
+    setTimeout(checkShowInstallBtn, 2000);
   } else {
     err.style.display='block';
     id('lgp').value=''; id('lgp').focus();
@@ -1859,6 +1860,32 @@ function xlLoadFile(file){
   reader.readAsArrayBuffer(file);
 }
 
+// Recognised column keywords per sheet type — used to locate the real header row
+// even when a title/instruction row sits above it (row 1, merged, etc.)
+const XL_HEADER_KEYWORDS = [
+  /shift/i, /ob.?bcm/i, /coal/i, /dispatch/i, /rehandl/i, /shale/i, /^hsd/i,
+  /^machine$/i, /^status$/i, /^trips$/i, /work.?hrs?/i, /^bd.?hrs?/i, /^mt.?hrs?/i,
+  /idle/i, /avail/i, /util/i, /remark/i, /rain/i, /misc|fuel/i, /land|village/i
+];
+
+// Scans the first N rows of a sheet and returns the index of the row that
+// looks most like a real header (most cells matching known keywords AND
+// first cell looking like "Date"). Falls back to row 0 if nothing matches.
+function xlFindHeaderRow(rows){
+  const scanLimit = Math.min(rows.length, 5);
+  let bestIdx = 0, bestScore = -1;
+  for(let r=0; r<scanLimit; r++){
+    const row = (rows[r]||[]).map(c=>String(c==null?'':c).trim());
+    const nonEmpty = row.filter(c=>c!=='').length;
+    if(nonEmpty < 2) continue; // a single merged note cell — skip as header candidate
+    const score = row.reduce((s,c)=> s + (XL_HEADER_KEYWORDS.some(re=>re.test(c)) ? 1 : 0), 0);
+    const looksLikeDate = /^date$/i.test(row[0]||'');
+    const total = score + (looksLikeDate?1:0);
+    if(total > bestScore){ bestScore = total; bestIdx = r; }
+  }
+  return bestScore > 0 ? bestIdx : 0;
+}
+
 function xlAnalyse(file){
   _xlSheetInfo={};
   const wb=_xlWorkbook;
@@ -1868,8 +1895,9 @@ function xlAnalyse(file){
   wb.SheetNames.forEach(sn=>{
     const ws=wb.Sheets[sn];
     const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
-    const header=(rows[0]||[]).map(c=>String(c).trim());
-    const dataRows=rows.slice(1).filter(r=>r.some(c=>c!==''&&c!==null&&c!==undefined));
+    const headerRowIdx=xlFindHeaderRow(rows);
+    const header=(rows[headerRowIdx]||[]).map(c=>String(c).trim());
+    const dataRows=rows.slice(headerRowIdx+1).filter(r=>r.some(c=>c!==''&&c!==null&&c!==undefined));
     const info={name:sn,header,dataRows,rows:dataRows.length,type:'unknown'};
 
     if(knownSheets.includes(sn)){
@@ -1963,7 +1991,12 @@ function xlMapSheetByType(type){
 // Normalise shift string: "Shift I" / "SHIFT I" / "I" / "shift i" → "I" | "II" | "III" | "GS"
 function xlNormShift(raw){
   const s=String(raw||'').trim().toUpperCase().replace(/^SHIFT\s*/,'');
-  return ['I','II','III','GS'].includes(s)?s:null;
+  if(['I','II','III','GS'].includes(s)) return s;
+  // Accept numeric shift values too (1/2/3 → I/II/III) for hand-edited sheets
+  if(s==='1') return 'I';
+  if(s==='2') return 'II';
+  if(s==='3') return 'III';
+  return null;
 }
 
 function doImportExcel(){
@@ -2047,13 +2080,18 @@ function _doImportExcelCore(){
     if(iMach<0||iShift<0){logLine('⚠️',`Sheet "${info.name}": missing Machine or Shift column`);return;}
     let sheetMachCount=0;
 
+    const skippedReasons={badDate:0,noMachine:0,badShift:0,unknownMachine:[]};
     info.dataRows.forEach(row=>{
-      const d=xlParseDate(row[iDate]); if(!d) return;
-      const machName=String(row[iMach]||'').trim(); if(!machName) return;
+      const d=xlParseDate(row[iDate]); if(!d){skippedReasons.badDate++;return;}
+      const machName=String(row[iMach]||'').trim(); if(!machName){skippedReasons.noMachine++;return;}
       const shift=xlNormShift(row[iShift]);
-      if(!shift||!['I','II','III'].includes(shift)) return;
-      const mObj=ALL_MACHINES.find(m=>m.name===machName);
-      if(!mObj){warnings++;return;}
+      if(!shift||!['I','II','III'].includes(shift)){skippedReasons.badShift++;return;}
+      const mObj=ALL_MACHINES.find(m=>m.name===machName) || ALL_MACHINES.find(m=>m.name.toLowerCase()===machName.toLowerCase());
+      if(!mObj){
+        warnings++;
+        if(skippedReasons.unknownMachine.length<5) skippedReasons.unknownMachine.push(machName);
+        return;
+      }
       if(!machByDate[d]) machByDate[d]={};
       if(!machByDate[d][mObj.id]) machByDate[d][mObj.id]={I:emptyMach(),II:emptyMach(),III:emptyMach()};
       machByDate[d][mObj.id][shift]={
@@ -2071,6 +2109,15 @@ function _doImportExcelCore(){
       sheetMachCount++;
     });
     logLine('⚙️',`Machines: "${info.name}" — ${sheetMachCount} entries`);
+    const skipTotal=skippedReasons.badDate+skippedReasons.noMachine+skippedReasons.badShift+skippedReasons.unknownMachine.length;
+    if(skipTotal>0 || warnings>0){
+      const parts=[];
+      if(skippedReasons.badDate)   parts.push(`${skippedReasons.badDate} row(s) had no valid Date`);
+      if(skippedReasons.noMachine) parts.push(`${skippedReasons.noMachine} row(s) had no Machine name`);
+      if(skippedReasons.badShift)  parts.push(`${skippedReasons.badShift} row(s) had an invalid Shift value`);
+      if(skippedReasons.unknownMachine.length) parts.push(`unknown machine name(s): ${skippedReasons.unknownMachine.join(', ')}${warnings>skippedReasons.unknownMachine.length?` (+${warnings-skippedReasons.unknownMachine.length} more)`:''}`);
+      if(parts.length) logLine('⚠️',`Sheet "${info.name}" skipped some rows — ${parts.join('; ')}`);
+    }
   });
 
   // ── 3. Parse Hindrance sheets ────────────────────────────────
